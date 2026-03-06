@@ -39,6 +39,21 @@
           "image": "./assets/splash.png",
           "resizeMode": "contain"
         }
+      ],
+      [
+        "expo-asset",
+        {
+          "assets": [
+            "./assets/models/encoder_model.onnx",
+            "./assets/models/decoder_with_past_model.onnx",
+            "./assets/models/vocab.json",
+            "./assets/models/source.spm",
+            "./assets/models/target.spm",
+            "./assets/models/config.json",
+            "./assets/models/tokenizer_config.json",
+            "./assets/models/special_tokens_map.json"
+          ]
+        }
       ]
     ],
     "scheme": "vaakai",

@@ -1,290 +1,210 @@
 /**
  * VaakAI Translation Service
- * 
- * Uses ONNX Runtime React Native to run Helsinki-NLP/opus-mt-en-hi
- * (MarianMT model) fully on-device.
- * 
- * Model files must be placed in: assets/models/
- *   - encoder_model.onnx
- *   - decoder_model_merged.onnx  
- *   - vocab.json
- *   - source.spm  (sentencepiece tokenizer)
- *   - target.spm
- * 
- * Download script: scripts/download_model.py
+ * Real offline neural machine translation using MarianMT ONNX model
+ * English → Hindi (Helsinki-NLP/opus-mt-en-hi)
  */
 
 import { InferenceSession, Tensor } from 'onnxruntime-react-native';
-import { Asset } from 'expo-asset';
 import * as FileSystem from 'expo-file-system';
 
-// ── Tokenizer (SentencePiece via vocab lookup) ──────────────────────────────
-// A lightweight JS tokenizer for MarianMT en-hi.
-// In production, use a full sentencepiece WASM module.
-// This implementation handles the most common English patterns.
-
-const BOS_TOKEN_ID = 0;
-const EOS_TOKEN_ID = 0;
-const PAD_TOKEN_ID = 65001;
-const MAX_LENGTH = 128;
-
-// Vocabulary and tokenizer state
 let encoderSession: InferenceSession | null = null;
 let decoderSession: InferenceSession | null = null;
-let srcVocab: Record<string, number> = {};
-let tgtVocabInv: Record<number, string> = {};
+let vocab: Record<string, number> = {};
+let idToToken: Record<string, string> = {};
 let modelReady = false;
-let loadProgress = 0;
-
-export type ProgressCallback = (progress: number, message: string) => void;
-
-// ── Model Loading ─────────────────────────────────────────────────────────────
-
-/**
- * Download model files from Hugging Face and cache locally.
- * Files are stored in FileSystem.documentDirectory/models/
- */
-export async function loadTranslationModel(
-  onProgress?: ProgressCallback
-): Promise<void> {
-  const modelDir = FileSystem.documentDirectory + 'models/';
-  
-  // Ensure directory exists
-  const dirInfo = await FileSystem.getInfoAsync(modelDir);
-  if (!dirInfo.exists) {
-    await FileSystem.makeDirectoryAsync(modelDir, { intermediates: true });
-  }
-
-  const files = [
-    {
-      name: 'encoder_model.onnx',
-      url: 'https://huggingface.co/Xenova/opus-mt-en-hi/resolve/main/onnx/encoder_model.onnx',
-      size: '~15MB',
-    },
-    {
-      name: 'decoder_model_merged.onnx', 
-      url: 'https://huggingface.co/Xenova/opus-mt-en-hi/resolve/main/onnx/decoder_model_merged.onnx',
-      size: '~15MB',
-    },
-    {
-      name: 'vocab.json',
-      url: 'https://huggingface.co/Helsinki-NLP/opus-mt-en-hi/resolve/main/vocab.json',
-      size: '~800KB',
-    },
-    {
-      name: 'source.spm',
-      url: 'https://huggingface.co/Helsinki-NLP/opus-mt-en-hi/resolve/main/source.spm',
-      size: '~800KB',
-    },
-    {
-      name: 'target.spm',
-      url: 'https://huggingface.co/Helsinki-NLP/opus-mt-en-hi/resolve/main/target.spm',
-      size: '~800KB',
-    },
-  ];
-
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
-    const localPath = modelDir + file.name;
-    const fileInfo = await FileSystem.getInfoAsync(localPath);
-
-    if (!fileInfo.exists) {
-      onProgress?.(
-        (i / files.length) * 80,
-        `Downloading ${file.name} (${file.size})…`
-      );
-      
-      const download = FileSystem.createDownloadResumable(
-        file.url,
-        localPath,
-        {},
-        (downloadProgress) => {
-          const fileProgress = downloadProgress.totalBytesWritten / 
-            (downloadProgress.totalBytesExpectedToWrite || 1);
-          const overall = ((i + fileProgress) / files.length) * 80;
-          onProgress?.(overall, `Downloading ${file.name}… ${Math.round(fileProgress * 100)}%`);
-        }
-      );
-      
-      await download.downloadAsync();
-    } else {
-      onProgress?.(
-        ((i + 1) / files.length) * 80,
-        `${file.name} cached ✓`
-      );
-    }
-  }
-
-  // Load vocab
-  onProgress?.(82, 'Loading vocabulary…');
-  const vocabJson = await FileSystem.readAsStringAsync(modelDir + 'vocab.json');
-  const vocab = JSON.parse(vocabJson);
-  
-  // Build source vocab (English tokens → IDs)
-  if (vocab.source_to_target) {
-    srcVocab = vocab.src_vocab || vocab.source_vocab || {};
-  } else {
-    srcVocab = vocab;
-  }
-  
-  // Build target inverse vocab (IDs → Hindi tokens)
-  const tgtVocab: Record<string, number> = vocab.tgt_vocab || vocab.target_vocab || vocab;
-  tgtVocabInv = Object.fromEntries(
-    Object.entries(tgtVocab).map(([k, v]) => [v as number, k])
-  );
-
-  // Load ONNX sessions
-  onProgress?.(85, 'Loading encoder model…');
-  encoderSession = await InferenceSession.create(
-    modelDir + 'encoder_model.onnx',
-    { executionProviders: ['cpu'] }
-  );
-
-  onProgress?.(93, 'Loading decoder model…');
-  decoderSession = await InferenceSession.create(
-    modelDir + 'decoder_model_merged.onnx',
-    { executionProviders: ['cpu'] }
-  );
-
-  onProgress?.(100, 'Model ready!');
-  modelReady = true;
-}
 
 export function isModelReady(): boolean {
   return modelReady;
 }
 
-// ── Simple BPE-style tokenizer ────────────────────────────────────────────────
-// Lightweight fallback tokenizer for MarianMT
-// For production: replace with sentencepiece WASM
+async function copyAndroidAssetToCache(filename: string): Promise<string> {
+  const dirPath = FileSystem.cacheDirectory + 'models/';
+  const destPath = dirPath + filename;
+
+  const dirInfo = await FileSystem.getInfoAsync(dirPath);
+  if (!dirInfo.exists) {
+    await FileSystem.makeDirectoryAsync(dirPath, { intermediates: true });
+  }
+
+  const fileInfo = await FileSystem.getInfoAsync(destPath);
+  if (fileInfo.exists && (fileInfo as any).size > 1000) {
+    return destPath;
+  }
+
+  await FileSystem.copyAsync({ from: `asset:///models/${filename}`, to: destPath });
+  return destPath;
+}
 
 function tokenize(text: string): number[] {
-  // Normalize
-  const normalized = text.toLowerCase().trim();
-  
-  // Simple word-piece style tokenization
-  // MarianMT uses SentencePiece; this is a simplified version
+  const tokens: number[] = [];
+  // DO NOT lowercase - model is case sensitive
+  const normalized = text.trim();
   const words = normalized.split(/\s+/);
-  const ids: number[] = [];
-  
+
   for (const word of words) {
-    // Try full word first
-    if (srcVocab[word] !== undefined) {
-      ids.push(srcVocab[word]);
-    } else if (srcVocab['▁' + word] !== undefined) {
-      ids.push(srcVocab['▁' + word]);
-    } else {
-      // Character-level fallback
-      for (const char of word) {
-        if (srcVocab[char] !== undefined) {
-          ids.push(srcVocab[char]);
-        } else {
-          ids.push(srcVocab['<unk>'] ?? 1);
+    // Try ▁Word first (exact case)
+    const wpWord = '\u2581' + word;
+    if (vocab[wpWord] !== undefined) {
+      tokens.push(vocab[wpWord]);
+      continue;
+    }
+
+    // Try ▁word (lowercase fallback)
+    const wpLower = '\u2581' + word.toLowerCase();
+    if (vocab[wpLower] !== undefined) {
+      tokens.push(vocab[wpLower]);
+      continue;
+    }
+
+    // Subword tokenization
+    let remaining = word;
+    let isFirst = true;
+    while (remaining.length > 0) {
+      let found = false;
+      for (let len = Math.min(remaining.length, 20); len > 0; len--) {
+        const sub = (isFirst ? '\u2581' : '') + remaining.slice(0, len);
+        const subLower = (isFirst ? '\u2581' : '') + remaining.slice(0, len).toLowerCase();
+        if (vocab[sub] !== undefined) {
+          tokens.push(vocab[sub]);
+          remaining = remaining.slice(len);
+          found = true;
+          isFirst = false;
+          break;
+        } else if (vocab[subLower] !== undefined) {
+          tokens.push(vocab[subLower]);
+          remaining = remaining.slice(len);
+          found = true;
+          isFirst = false;
+          break;
         }
+      }
+      if (!found) {
+        tokens.push(vocab['<unk>'] ?? 3);
+        remaining = remaining.slice(1);
+        isFirst = false;
       }
     }
   }
-  
-  return ids;
+
+  tokens.push(vocab['</s>'] ?? 0);
+  return tokens;
 }
 
-function detokenize(ids: number[]): string {
-  const tokens = ids
-    .filter(id => id !== EOS_TOKEN_ID && id !== PAD_TOKEN_ID && id !== BOS_TOKEN_ID)
-    .map(id => tgtVocabInv[id] ?? '');
-  
-  // Join SentencePiece tokens (▁ = space prefix)
-  return tokens
-    .join('')
-    .replace(/▁/g, ' ')
-    .trim();
+function decodeTokens(ids: string[]): string {
+  let result = '';
+  for (const id of ids) {
+    const token = idToToken[id];
+    if (!token) continue;
+    if (token === '</s>' || token === '<pad>' || token === '<unk>') continue;
+    if (token.startsWith('\u2581')) {
+      result += ' ' + token.slice(1);
+    } else {
+      result += token;
+    }
+  }
+  return result.trim();
 }
 
-// ── Beam Search Translation ───────────────────────────────────────────────────
+async function runEncoder(inputIds: number[]): Promise<{ hidden: Float32Array; seqLen: number }> {
+  if (!encoderSession) throw new Error('Encoder not loaded');
+  const seqLen = inputIds.length;
+  const results = await encoderSession.run({
+    input_ids: new Tensor('int64', BigInt64Array.from(inputIds.map(BigInt)), [1, seqLen]),
+    attention_mask: new Tensor('int64', BigInt64Array.from(new Array(seqLen).fill(1n)), [1, seqLen]),
+  });
+  return { hidden: results['last_hidden_state'].data as Float32Array, seqLen };
+}
+
+async function runDecoderStep(
+  decoderInputIds: number[],
+  encoderHidden: Float32Array,
+  encoderSeqLen: number
+): Promise<Float32Array> {
+  if (!decoderSession) throw new Error('Decoder not loaded');
+  const decSeqLen = decoderInputIds.length;
+  const hiddenSize = encoderHidden.length / encoderSeqLen;
+  const results = await decoderSession.run({
+    input_ids: new Tensor('int64', BigInt64Array.from(decoderInputIds.map(BigInt)), [1, decSeqLen]),
+    encoder_hidden_states: new Tensor('float32', encoderHidden, [1, encoderSeqLen, hiddenSize]),
+    encoder_attention_mask: new Tensor('int64', BigInt64Array.from(new Array(encoderSeqLen).fill(1n)), [1, encoderSeqLen]),
+  });
+  const logits = results['logits'].data as Float32Array;
+  const vocabSize = logits.length / decSeqLen;
+  return logits.slice((decSeqLen - 1) * vocabSize, decSeqLen * vocabSize);
+}
+
+function argmax(arr: Float32Array): number {
+  let maxIdx = 0, maxVal = arr[0];
+  for (let i = 1; i < arr.length; i++) {
+    if (arr[i] > maxVal) { maxVal = arr[i]; maxIdx = i; }
+  }
+  return maxIdx;
+}
+
+async function translateWithModel(text: string): Promise<string> {
+  const inputIds = tokenize(text);
+  if (inputIds.length === 0) throw new Error('Could not tokenize input');
+
+  const { hidden: encoderHidden, seqLen: encoderSeqLen } = await runEncoder(inputIds);
+
+  const padId = vocab['<pad>'] ?? 62000;
+  const eosId = vocab['</s>'] ?? 0;
+  const outputIds: number[] = [padId];
+
+  for (let step = 0; step < 128; step++) {
+    const logits = await runDecoderStep(outputIds, encoderHidden, encoderSeqLen);
+    const nextId = argmax(logits);
+    if (nextId === eosId) break;
+    outputIds.push(nextId);
+  }
+
+  return decodeTokens(outputIds.slice(1).map(String)) || 'Translation not available';
+}
+
+export async function loadTranslationModel(
+  onProgress?: (progress: number, message: string) => void
+): Promise<void> {
+  try {
+    onProgress?.(0.05, 'Preparing model files...');
+
+    onProgress?.(0.1, 'Copying encoder to cache...');
+    const encoderPath = await copyAndroidAssetToCache('encoder_model.onnx');
+
+    onProgress?.(0.4, 'Copying decoder to cache...');
+    const decoderPath = await copyAndroidAssetToCache('decoder_model.onnx');
+
+    onProgress?.(0.6, 'Loading vocabulary...');
+    const vocabPath = await copyAndroidAssetToCache('vocab.json');
+    const vocabContent = await FileSystem.readAsStringAsync(vocabPath);
+    vocab = JSON.parse(vocabContent);
+
+    onProgress?.(0.65, 'Loading target vocabulary...');
+    const targetVocabPath = await copyAndroidAssetToCache('target_vocab.json');
+    const targetVocabContent = await FileSystem.readAsStringAsync(targetVocabPath);
+    idToToken = JSON.parse(targetVocabContent);
+
+    onProgress?.(0.7, 'Initializing encoder...');
+    encoderSession = await InferenceSession.create(encoderPath, {
+      executionProviders: ['cpu'],
+    });
+
+    onProgress?.(0.88, 'Initializing decoder...');
+    decoderSession = await InferenceSession.create(decoderPath, {
+      executionProviders: ['cpu'],
+    });
+
+    modelReady = true;
+    onProgress?.(1.0, 'Model ready!');
+  } catch (e: any) {
+    modelReady = false;
+    throw new Error('Failed to load model: ' + e.message);
+  }
+}
 
 export async function translate(text: string): Promise<string> {
   if (!modelReady || !encoderSession || !decoderSession) {
-    throw new Error('Model not loaded. Call loadTranslationModel() first.');
+    throw new Error('Model not loaded. Please load the model first.');
   }
-
-  // Tokenize input
-  const inputIds = tokenize(text);
-  const seqLen = Math.min(inputIds.length, MAX_LENGTH);
-  const paddedIds = inputIds.slice(0, seqLen);
-  
-  // Create attention mask (all 1s for non-padded)
-  const attentionMask = new Array(seqLen).fill(1);
-  
-  // Create input tensors
-  const inputIdsTensor = new Tensor(
-    'int64',
-    BigInt64Array.from(paddedIds.map(BigInt)),
-    [1, seqLen]
-  );
-  const attentionMaskTensor = new Tensor(
-    'int64',
-    BigInt64Array.from(attentionMask.map(BigInt)),
-    [1, seqLen]
-  );
-
-  // Run encoder
-  const encoderOutput = await encoderSession.run({
-    input_ids: inputIdsTensor,
-    attention_mask: attentionMaskTensor,
-  });
-
-  const lastHiddenState = encoderOutput['last_hidden_state'];
-  
-  // Greedy decode
-  const outputIds: number[] = [];
-  let decoderInputIds = [BOS_TOKEN_ID];
-  
-  for (let step = 0; step < MAX_LENGTH; step++) {
-    const decoderIdsTensor = new Tensor(
-      'int64',
-      BigInt64Array.from(decoderInputIds.map(BigInt)),
-      [1, decoderInputIds.length]
-    );
-    
-    const decoderMaskTensor = new Tensor(
-      'int64',
-      BigInt64Array.from(new Array(decoderInputIds.length).fill(BigInt(1))),
-      [1, decoderInputIds.length]
-    );
-
-    const decoderOutput = await decoderSession.run({
-      input_ids: decoderIdsTensor,
-      encoder_hidden_states: lastHiddenState,
-      encoder_attention_mask: attentionMaskTensor,
-      attention_mask: decoderMaskTensor,
-      use_cache_branch: new Tensor('bool', [step > 0], [1]),
-    });
-
-    const logits = decoderOutput['logits'];
-    const logitsData = logits.data as Float32Array;
-    
-    // Get last token logits
-    const vocabSize = logitsData.length / decoderInputIds.length;
-    const lastTokenLogits = logitsData.slice(
-      (decoderInputIds.length - 1) * vocabSize,
-      decoderInputIds.length * vocabSize
-    );
-    
-    // Argmax (greedy)
-    let maxId = 0;
-    let maxVal = lastTokenLogits[0];
-    for (let i = 1; i < lastTokenLogits.length; i++) {
-      if (lastTokenLogits[i] > maxVal) {
-        maxVal = lastTokenLogits[i];
-        maxId = i;
-      }
-    }
-    
-    if (maxId === EOS_TOKEN_ID) break;
-    
-    outputIds.push(maxId);
-    decoderInputIds = [...decoderInputIds, maxId];
-  }
-  
-  return detokenize(outputIds);
+  if (!text.trim()) return '';
+  return await translateWithModel(text.trim());
 }

@@ -1,0 +1,18 @@
+diff --git a/node_modules/onnxruntime-react-native/android/build.gradle b/node_modules/onnxruntime-react-native/android/build.gradle
+index 825990e..44a956a 100644
+--- a/node_modules/onnxruntime-react-native/android/build.gradle
++++ b/node_modules/onnxruntime-react-native/android/build.gradle
+@@ -228,10 +228,10 @@ dependencies {
+ 
+   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
+ 
+-  implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
++  implementation "com.microsoft.onnxruntime:onnxruntime-android:1.20.0@aar"
+ 
+   // By default it will just include onnxruntime full aar package
+   if (ortExtensionsEnabled) {
+-    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:latest.integration@aar"
++    implementation "com.microsoft.onnxruntime:onnxruntime-extensions-android:0.13.0@aar"
+   }
+ }
+\ No newline at end of file
