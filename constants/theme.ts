@@ -12,7 +12,6 @@ export const Colors = {
   green: '#22C55E',
   overlay: 'rgba(15,23,42,0.97)',
 };
-
 export const Radius = {
   sm: 10,
   md: 14,
@@ -20,7 +19,6 @@ export const Radius = {
   xl: 22,
   full: 999,
 };
-
 export const Spacing = {
   xs: 4,
   sm: 8,
