@@ -1,183 +1,263 @@
-# VaakAI – Offline Hindi Translator
-### Fully on-device · No API · No cloud · App Store ready
+<div align="center">
+
+<img src="assets/icon.png" width="120" height="120" alt="VaakAI Logo" />
+
+<h1>VaakAI — वाक्AI</h1>
+
+<p><strong>Real Neural AI Translation. Zero Internet. Always Private.</strong></p>
+
+<p>
+  <img src="https://img.shields.io/badge/Platform-Android-3DDC84?style=for-the-badge&logo=android&logoColor=white" />
+  <img src="https://img.shields.io/badge/Built%20With-Expo-000020?style=for-the-badge&logo=expo&logoColor=white" />
+  <img src="https://img.shields.io/badge/AI%20Model-MarianMT%20ONNX-FF6F00?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/Offline-100%25-22C55E?style=for-the-badge" />
+  <img src="https://img.shields.io/badge/License-MIT-8B5CF6?style=for-the-badge" />
+</p>
+
+<p><em>From the Sanskrit word वाक् (Vāk) — meaning "speech" or "voice"</em></p>
+
+</div>
 
 ---
 
-## What This Is
+## 🌍 The Problem
 
-A real production Expo React Native app that translates English → Hindi using:
-- **Helsinki-NLP/opus-mt-en-hi** (MarianMT neural translation model)
-- **ONNX Runtime React Native** for on-device inference
-- **expo-speech** for offline Hindi TTS
-- **expo-secure-store** for PIN-protected history
+India has over **500 million Hindi speakers**. Yet every major translation tool — Google Translate, DeepL, Microsoft Translator — requires a stable internet connection to function.
 
----
+In rural areas, on flights, in hospitals with poor signal, or anywhere connectivity is unreliable, these tools fail completely. Language barriers become dangerous barriers.
 
-## ⚠️ Important: Why You Need a Custom Build
-
-`onnxruntime-react-native` uses **native modules** (C++ ONNX Runtime).  
-This means **Expo Go will NOT work** — you need a custom dev client or a production build.
-
-**The good news:** EAS Build is **free** and builds your APK/IPA in the cloud.
+**VaakAI solves this.**
 
 ---
 
-## 🚀 Step-by-Step Setup (30 minutes)
+## ✨ What is VaakAI?
 
-### Step 1: Install prerequisites
+VaakAI is a **fully offline, privacy-first neural machine translation app** for Android. It runs a real transformer AI model entirely on your device — no internet connection required, no data ever sent to any server.
 
-```bash
-# Install Node.js 18+ from https://nodejs.org
-# Install Expo CLI
-npm install -g expo-cli eas-cli
-
-# Verify
-node --version   # should be 18+
-eas --version
-```
-
-### Step 2: Set up the project
-
-```bash
-# Clone/copy this folder, then:
-cd VaakAI
-npm install
-```
-
-### Step 3: Create a free Expo account
-
-Go to https://expo.dev → Sign up (free)
-
-```bash
-eas login
-# Enter your Expo account credentials
-```
-
-### Step 4: Configure EAS Build
-
-```bash
-eas build:configure
-# Select: Android + iOS
-# This creates/updates eas.json (already included)
-```
-
-### Step 5: Build Android APK (Free!)
-
-```bash
-# This builds in Expo's cloud — no Android Studio needed!
-eas build --platform android --profile preview
-
-# Wait ~10-15 minutes
-# You'll get a download link for the .apk file
-```
-
-### Step 6: Install on your phone
-
-1. Download the `.apk` from the EAS link
-2. On your Android phone: Settings → Security → Allow Unknown Sources
-3. Open the APK → Install
-4. Done! VaakAI is on your phone 🎉
+> *"Not a dictionary. Not an API. A real AI running on your phone."*
 
 ---
 
-## 📱 iOS Build (Mac required)
+## 🚀 Key Features
 
-```bash
-eas build --platform ios --profile preview
-# Requires Apple Developer account ($99/year) for device install
-# OR use simulator on Mac: npx expo run:ios
-```
+| Feature | Description |
+|---|---|
+| 🧠 **Real Neural AI** | Helsinki-NLP MarianMT transformer — same architecture used by production translation services worldwide |
+| 📴 **100% Offline** | Works on planes, in villages, in hospitals — anywhere, anytime |
+| 🔒 **Zero Data Leakage** | Your text never leaves your device. No servers. No logs. No tracking. Ever. |
+| ⚡ **Quantized Model** | INT8 quantization shrinks the model from 500MB+ to ~130MB with minimal quality loss |
+| 🗣️ **Text-to-Speech** | Hear Hindi translations spoken aloud in natural voice |
+| 📋 **One-Tap Copy** | Copy any translation instantly to clipboard |
+| 🕘 **Translation History** | All translations saved locally — accessible offline forever |
+| 🌙 **Beautiful Dark UI** | Designed for readability and one-handed use |
 
 ---
 
-## 🔧 Local Development (with Android Studio)
-
-If you want to test locally without EAS:
-
-```bash
-# Install Android Studio from https://developer.android.com/studio
-# Set ANDROID_HOME environment variable
-
-# Then:
-npx expo prebuild --platform android
-npx expo run:android
+## 🤖 How It Works
 ```
+English Input
+      │
+      ▼
+┌─────────────────┐
+│  JS Tokenizer   │  ← SentencePiece vocab (61,950 tokens)
+│  (case-aware)   │
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  ONNX Encoder   │  ← MarianMT Encoder (49MB quantized)
+│  encoder.onnx   │    Converts tokens → hidden states [1, seq, 512]
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│  ONNX Decoder   │  ← MarianMT Decoder (85MB quantized)
+│  decoder.onnx   │    Autoregressively generates Hindi tokens
+└────────┬────────┘
+         │
+         ▼
+┌─────────────────┐
+│ Token Decoder   │  ← target_vocab.json → Devanagari text
+└────────┬────────┘
+         │
+         ▼
+   Hindi Output 🇮🇳
+```
+
+Everything runs **on-device** using ONNX Runtime — the same inference engine used internally by Microsoft, Meta, and Google.
+
+---
+
+## 🛠️ Tech Stack
+
+| Layer | Technology |
+|---|---|
+| **Framework** | React Native + Expo SDK 52 |
+| **ML Inference** | ONNX Runtime React Native 1.20.0 |
+| **AI Model** | Helsinki-NLP/opus-mt-en-hi (MarianMT) |
+| **Model Export** | Hugging Face Optimum |
+| **Quantization** | ONNX Runtime INT8 Dynamic Quantization |
+| **Text-to-Speech** | expo-speech (hi-IN) |
+| **File System** | expo-file-system |
+| **Navigation** | Expo Router (file-based) |
+| **Language** | TypeScript |
+
+---
+
+## 📊 Model Specifications
+
+| Property | Value |
+|---|---|
+| Base Model | Helsinki-NLP/opus-mt-en-hi |
+| Architecture | MarianMT (Transformer seq2seq) |
+| Parameters | ~74 million |
+| Original Size | ~521MB (encoder + decoder) |
+| Quantized Size | ~134MB (INT8 dynamic) |
+| Quantization | INT8 Dynamic (ONNX Runtime) |
+| Size Reduction | **74% smaller** |
+| Inference Engine | ONNX Runtime CPU |
+| Decoding Strategy | Greedy search (128 max tokens) |
+| Vocabulary Size | 61,950 tokens (SentencePiece) |
 
 ---
 
 ## 📁 Project Structure
-
 ```
 VaakAI/
-├── app/
-│   ├── _layout.tsx          # Root navigation
-│   ├── index.tsx            # Home / Translator screen
-│   ├── history.tsx          # PIN-protected history
-│   └── settings.tsx         # Settings screen
-├── components/
-│   ├── GlassCard.tsx        # Reusable glass card
-│   ├── ModelLoader.tsx      # ONNX download progress UI
-│   └── PinInput.tsx         # 4-digit PIN component
+├── app/                          # Expo Router screens
+│   ├── index.tsx                 # Main translation screen
+│   ├── history.tsx               # Translation history
+│   ├── settings.tsx              # App settings
+│   └── _layout.tsx               # Navigation layout
 ├── services/
-│   ├── translationService.ts  # ← ONNX inference engine (swap this for upgrades)
-│   └── historyService.ts      # Local history + PIN storage
+│   ├── translationService.ts     # ONNX inference engine + tokenizer
+│   └── historyService.ts         # Local history persistence
+├── components/
+│   ├── GlassCard.tsx             # Reusable card component
+│   └── ModelLoader.tsx           # Model loading UI + progress
 ├── constants/
-│   └── theme.ts             # Colors, spacing, radii
-├── app.json                 # Expo config
-├── eas.json                 # EAS Build profiles
-└── package.json
+│   └── theme.ts                  # Colors, spacing, radius tokens
+└── android/app/src/main/
+    └── assets/models/            # ONNX models (not in git — see setup)
+        ├── encoder_model.onnx    # 49MB quantized encoder
+        ├── decoder_model.onnx    # 85MB quantized decoder
+        ├── vocab.json            # Source vocabulary (EN)
+        └── target_vocab.json     # Target vocabulary (HI)
 ```
 
 ---
 
-## 🤖 How the AI Model Works
+## ⚙️ Setup & Installation
 
-1. **First launch:** Downloads ~30MB from Hugging Face CDN (opus-mt-en-hi)
-2. **Cached:** Stored in `FileSystem.documentDirectory` — persists forever
-3. **Translation:** `encoder_model.onnx` + `decoder_model_merged.onnx` run via ONNX Runtime
-4. **After download:** Works 100% offline, even in airplane mode ✈️
+### Prerequisites
+- Node.js 18+
+- Expo CLI (`npm install -g expo-cli`)
+- Android Studio + Android SDK
+- Python 3.10 (for model preparation only)
+- Conda environment recommended
 
-### Upgrading the model (Phase 2)
+### 1. Clone & Install
+```bash
+git clone https://github.com/ayush-codes-ar/Vaak.ai.git
+cd Vaak.ai
+npm install
+```
 
-Just edit `services/translationService.ts`:
-- Swap the model URL for any ONNX MarianMT model
-- Same API: `translate(text: string): Promise<string>`
+### 2. Prepare the AI Models
+
+The ONNX models are excluded from git (too large). Generate them with Python:
+```bash
+# Install Python dependencies
+pip install optimum==1.21.2 transformers==4.42.4 onnx==1.16.2 onnxruntime==1.18.1 sentencepiece
+
+# Export MarianMT to ONNX format
+python -c "
+from transformers import AutoTokenizer
+from optimum.onnxruntime import ORTModelForSeq2SeqLM
+model = ORTModelForSeq2SeqLM.from_pretrained('Helsinki-NLP/opus-mt-en-hi', export=True)
+tokenizer = AutoTokenizer.from_pretrained('Helsinki-NLP/opus-mt-en-hi')
+model.save_pretrained('./en-hi-onnx')
+tokenizer.save_pretrained('./en-hi-onnx')
+"
+
+# Quantize to INT8 (500MB → 130MB)
+python -c "
+from onnxruntime.quantization import quantize_dynamic, QuantType
+quantize_dynamic('./en-hi-onnx/encoder_model.onnx', './en-hi-onnx-q/encoder_model.onnx', weight_type=QuantType.QUInt8)
+quantize_dynamic('./en-hi-onnx/decoder_model.onnx', './en-hi-onnx-q/decoder_model.onnx', weight_type=QuantType.QUInt8)
+"
+
+# Export vocabularies
+python -c "
+from transformers import MarianTokenizer
+import json
+tok = MarianTokenizer.from_pretrained('Helsinki-NLP/opus-mt-en-hi')
+with open('./en-hi-onnx-q/vocab.json', 'w', encoding='utf-8') as f:
+    json.dump(dict(tok.encoder), f, ensure_ascii=False)
+with open('./en-hi-onnx-q/target_vocab.json', 'w', encoding='utf-8') as f:
+    json.dump(dict(tok.decoder), f, ensure_ascii=False)
+"
+```
+
+### 3. Copy Models to Android Assets
+```bash
+mkdir -p android/app/src/main/assets/models
+
+cp en-hi-onnx-q/encoder_model.onnx android/app/src/main/assets/models/
+cp en-hi-onnx-q/decoder_model.onnx android/app/src/main/assets/models/
+cp en-hi-onnx-q/vocab.json android/app/src/main/assets/models/
+cp en-hi-onnx-q/target_vocab.json android/app/src/main/assets/models/
+```
+
+### 4. Run
+```bash
+# Local development (requires Android emulator)
+npx expo run:android
+
+# Production APK via EAS
+eas build --platform android --profile preview
+```
 
 ---
 
-## 🎬 Hackathon Demo Flow
+## 🔮 Roadmap
 
-1. Turn on airplane mode
-2. Open VaakAI (model already cached)
-3. Type: "Hello, how are you?"
-4. Tap Translate → "नमस्ते, आप कैसे हैं?"
-5. Tap 🔊 → Hear it in Hindi
-6. Show Settings → Enable Secure History
-7. Set PIN → Save translations
-8. Lock & unlock history with PIN
-9. **Say:** "This entire AI translation runs offline on-device. No cloud, no API."
-
----
-
-## 🆓 Completely Free
-
-| Service | Cost |
-|---------|------|
-| Expo / EAS Build | Free (30 builds/month) |
-| Hugging Face model hosting | Free |
-| ONNX Runtime React Native | Open source |
-| App runtime | Free |
-
-**Total: $0** 🎉
+- [ ] Hindi → English reverse translation
+- [ ] More Indian languages (Tamil, Telugu, Bengali, Marathi, Punjabi)
+- [ ] Voice input with on-device speech recognition
+- [ ] Beam search decoding for improved translation quality
+- [ ] Model download on first launch (smaller initial APK)
+- [ ] Phrase bookmarks and favorites
+- [ ] iOS support
+- [ ] Widget for quick translations
 
 ---
 
-## 📦 Dependencies
+## 🙏 Acknowledgements
 
-- `onnxruntime-react-native` — ONNX inference engine
-- `expo-speech` — Offline Hindi TTS
-- `expo-secure-store` — Encrypted PIN storage
-- `expo-file-system` — Model file caching
-- `@react-native-async-storage/async-storage` — History storage
-- `expo-haptics` — Tactile feedback
-- `expo-router` — File-based navigation
+- [Helsinki-NLP](https://github.com/Helsinki-NLP) — MarianMT model
+- [Microsoft ONNX Runtime](https://onnxruntime.ai/) — On-device inference engine
+- [Hugging Face Optimum](https://github.com/huggingface/optimum) — ONNX export pipeline
+- [Expo](https://expo.dev/) — React Native framework
+
+---
+
+## 📄 License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+
+<h3>वाक् — The Voice That Never Needs the Cloud</h3>
+
+<p>Built with ❤️ for offline India</p>
+
+<p>
+  <a href="https://github.com/ayush-codes-ar/Vaak.ai/releases">📱 Download APK</a> ·
+  <a href="https://github.com/ayush-codes-ar/Vaak.ai/issues">🐛 Report Bug</a> ·
+  <a href="https://github.com/ayush-codes-ar/Vaak.ai/issues">✨ Request Feature</a>
+</p>
+
+</div>
